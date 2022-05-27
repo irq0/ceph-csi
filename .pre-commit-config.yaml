@@ -1,17 +1,25 @@
 ---
 repos:
-
   # Check if the commit message has a valid sign-off.
   - repo: https://github.com/gklein/check_signoff
     rev: v1.0.5
     hooks:
       - id: check-signoff
 
-  # Catch gofmt issues, if any.
-  - repo: git://github.com/dnephin/pre-commit-golang
-    rev: v0.3.5
+  - repo: local
     hooks:
-      - id: go-fmt
+      - id: generate-golangci-yml
+        name: generate golangci.yml
+        entry: make scripts/golangci.yml
+        language: system
+        types: [go]
+        pass_filenames: false
+
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v1.46.2
+    hooks:
+      - id: golangci-lint
+        entry: golangci-lint run --config=scripts/golangci.yml --fix --new
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v2.5.0
