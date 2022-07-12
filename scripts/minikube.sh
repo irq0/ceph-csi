@@ -177,12 +177,14 @@ function disable_storage_addons() {
     ${minikube} addons disable storage-provisioner 2>/dev/null || true
 }
 
+. "$(dirname $0)/../minikube_settings"
+
 # configure minikube
 MINIKUBE_ARCH=${MINIKUBE_ARCH:-"amd64"}
 MINIKUBE_VERSION=${MINIKUBE_VERSION:-"latest"}
 MINIKUBE_ISO_URL=${MINIKUBE_ISO_URL:-""}
 KUBE_VERSION=${KUBE_VERSION:-"latest"}
-CONTAINER_CMD=${CONTAINER_CMD:-"docker"}
+CONTAINER_CMD=${CONTAINER_CMD:-"podman"}
 MEMORY=${MEMORY:-"4096"}
 MINIKUBE_WAIT_TIMEOUT=${MINIKUBE_WAIT_TIMEOUT:-"10m"}
 MINIKUBE_WAIT=${MINIKUBE_WAIT:-"all"}
@@ -241,12 +243,14 @@ if [[ "${KUBE_VERSION}" == "latest" ]]; then
     KUBE_VERSION=$(curl -L https://storage.googleapis.com/kubernetes-release/release/stable.txt 2> /dev/null)
 fi
 
+declare -p | grep -E "(MINIKUBE|KUBE|CONTAINER|MEMORY|CPU|VM|DISK|CEPH|K8S|CSI)"
+
 minikube="$(detect_minikube)"
 kubectl="$(detect_kubectl)"
 
 case "${1:-}" in
 up)
-    install_minikube
+#    install_minikube
     #if driver  is 'none' install kubectl with KUBE_VERSION
     if [[ "${VM_DRIVER}" == "none" ]]; then
         mkdir -p "$HOME"/.kube "$HOME"/.minikube
