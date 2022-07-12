@@ -147,11 +147,13 @@ function disable_storage_addons() {
     ${minikube} addons disable storage-provisioner 2>/dev/null || true
 }
 
+. "$(dirname $0)/../minikube_settings"
+
 # configure minikube
 MINIKUBE_ARCH=${MINIKUBE_ARCH:-"amd64"}
 MINIKUBE_VERSION=${MINIKUBE_VERSION:-"latest"}
 KUBE_VERSION=${KUBE_VERSION:-"latest"}
-CONTAINER_CMD=${CONTAINER_CMD:-"docker"}
+CONTAINER_CMD=${CONTAINER_CMD:-"podman"}
 MEMORY=${MEMORY:-"4096"}
 MINIKUBE_WAIT_TIMEOUT=${MINIKUBE_WAIT_TIMEOUT:-"10m"}
 MINIKUBE_WAIT=${MINIKUBE_WAIT:-"all"}
@@ -209,12 +211,14 @@ if [[ "${KUBE_VERSION}" == "latest" ]]; then
     KUBE_VERSION=$(curl -L https://storage.googleapis.com/kubernetes-release/release/stable.txt 2> /dev/null)
 fi
 
+declare -p | grep -E "(MINIKUBE|KUBE|CONTAINER|MEMORY|CPU|VM|DISK|CEPH|K8S|CSI)"
+
 minikube="$(detect_minikube)"
 kubectl="$(detect_kubectl)"
 
 case "${1:-}" in
 up)
-    install_minikube
+#    install_minikube
     #if driver  is 'none' install kubectl with KUBE_VERSION
     if [[ "${VM_DRIVER}" == "none" ]]; then
         mkdir -p "$HOME"/.kube "$HOME"/.minikube
@@ -233,7 +237,7 @@ up)
         K8S_FEATURE_GATES="${K8S_FEATURE_GATES},RecoverVolumeExpansionFailure=true"
     fi
     # shellcheck disable=SC2086
-    ${minikube} start --force --memory="${MEMORY}" --cpus="${CPUS}" -b kubeadm --kubernetes-version="${KUBE_VERSION}" --driver="${VM_DRIVER}" --feature-gates="${K8S_FEATURE_GATES}" --cni="${CNI}" ${EXTRA_CONFIG} ${EXTRA_CONFIG_PSP} --wait-timeout="${MINIKUBE_WAIT_TIMEOUT}" --wait="${MINIKUBE_WAIT}" --delete-on-failure ${DISK_CONFIG}
+    ${minikube} start --force --memory="${MEMORY}" --cpus="${CPUS}" -b kubeadm --kubernetes-version="${KUBE_VERSION}" --driver="${VM_DRIVER}" --feature-gates="${K8S_FEATURE_GATES}" --cni="${CNI}" ${EXTRA_CONFIG} ${EXTRA_CONFIG_PSP} --wait-timeout="${MINIKUBE_WAIT_TIMEOUT}" --wait="${MINIKUBE_WAIT}" --delete-on-failure ${DISK_CONFIG} --iso-url=file:///home/seri/WORKSPACE/minikube/out/minikube-amd64.iso
 
     # create a link so the default dataDirHostPath will work for this
     # environment
