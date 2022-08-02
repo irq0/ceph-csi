@@ -321,6 +321,19 @@ func Unlock(
 	volEncryption *util.VolumeEncryption,
 	stagingTargetPath string, volID string,
 ) error {
+	// Fetches keys from KMS. Do this first to catch KMS errors before setting up anything.
+	keyFn, err := createKeyFuncFromVolumeEncryption(ctx, *volEncryption, volID)
+	if err != nil {
+		log.ErrorLog(ctx, "fscrypt: could not create key function: %v", err)
+
+		return err
+	}
+
+	err = fscryptfilesystem.UpdateMountInfo()
+	if err != nil {
+		return err
+	}
+
 	fscryptContext, err := fscryptactions.NewContextFromMountpoint(stagingTargetPath, nil)
 	if err != nil {
 		log.ErrorLog(ctx, "fscrypt: failed to create context from mountpoint %v: %w", stagingTargetPath)
