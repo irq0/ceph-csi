@@ -341,6 +341,8 @@ func Unlock(
 		return err
 	}
 
+	fscryptContext.Config.UseFsKeyringForV1Policies = true
+
 	log.DebugLog(ctx, "fscrypt context: %+v", fscryptContext)
 
 	if err = fscryptContext.Mount.CheckSupport(); err != nil {
