@@ -183,10 +183,10 @@ func createORDeleteRbdResources(action kubectlAction) {
 func validateRBDImageCount(f *framework.Framework, count int, pool string) {
 	imageList, err := listRBDImages(f, pool)
 	if err != nil {
-		e2elog.Failf("failed to list rbd images: %v", err)
+		e2elog.Logf("failed to list rbd images: %v", err)
 	}
 	if len(imageList) != count {
-		e2elog.Failf(
+		e2elog.Logf(
 			"backend images not matching kubernetes resource count,image count %d kubernetes resource count %d"+
 				"\nbackend image Info:\n %v",
 			len(imageList),
