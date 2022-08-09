@@ -379,14 +379,7 @@ func Unlock(
 			metadataDirExists, kernelPolicyExists)
 	}
 
-	keyFn, err := createKeyFuncFromVolumeEncryption(ctx, *volEncryption, volID)
-	if err != nil {
-		log.ErrorLog(ctx, "fscrypt: could not create key function: %v", err)
-
-		return err
-	}
-
-	protectorName := fmt.Sprintf("%s-%s", FscryptProtectorPrefix, volEncryption.GetID())
+	protectorName := FscryptProtectorPrefix
 
 	switch volEncryption.KMS.RequiresDEKStore() {
 	case kms.DEKStoreMetadata:
