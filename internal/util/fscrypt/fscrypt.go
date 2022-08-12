@@ -111,6 +111,21 @@ func createKeyFuncFromVolumeEncryption(
 	return keyFunc, nil
 }
 
+func fsyncEncryptedDirectory(path string) error {
+	dir, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+
+	err = dir.Sync()
+	if err != nil {
+		return nil
+	}
+
+	return nil
+}
+
 // unlockExisting tries to unlock an already set up fscrypt directory using keys from Ceph CSI.
 func unlockExisting(
 	ctx context.Context,
@@ -222,6 +237,11 @@ func initializeAndUnlock(
 		return err
 	}
 
+	if err = fsyncEncryptedDirectory(encryptedPath); err != nil {
+		log.ErrorLog(ctx, "fscrypt: fsync encrypted dir - to flush kernel policy to disk failed %v", err)
+
+		return err
+	}
 	return nil
 }
 
