@@ -13,6 +13,11 @@ limitations under the License.
 
 package fscrypt
 
+/*
+#include <linux/fs.h>
+*/
+import "C"
+
 import (
 	"context"
 	"errors"
@@ -41,6 +46,17 @@ const (
 	FscryptSubdir            = "ceph-csi-encrypted"
 	encryptionPassphraseSize = 64
 )
+
+var policyV2Support = []util.KernelVersion{
+	{
+		Version:      5,
+		PatchLevel:   4,
+		SubLevel:     0,
+		ExtraVersion: 0,
+		Distribution: "",
+		Backport:     false,
+	},
+}
 
 func AppendEncyptedSubdirectory(dir string) string {
 	return path.Join(dir, FscryptSubdir)
@@ -80,14 +96,13 @@ func createKeyFuncFromVolumeEncryption(
 	encryption util.VolumeEncryption,
 	volID string,
 ) (func(fscryptactions.ProtectorInfo, bool) (*fscryptcrypto.Key, error), error) {
+	passphrase, err := getPassphrase(ctx, encryption, volID)
+	if err != nil {
+		return nil, err
+	}
+
 	keyFunc := func(info fscryptactions.ProtectorInfo, retry bool) (*fscryptcrypto.Key, error) {
 		key, err := fscryptcrypto.NewBlankKey(32)
-
-		passphrase, err := getPassphrase(ctx, encryption, volID)
-		if err != nil {
-			return nil, err
-		}
-
 		copy(key.Data(), passphrase)
 
 		return key, err
@@ -161,8 +176,7 @@ func initializeAndUnlock(
 
 	protector, err := fscryptactions.CreateProtector(fscryptContext, protectorName, keyFn, owner)
 	if err != nil {
-		log.ErrorLog(ctx, "fscrypt: protector name=%s create failed: %v. reverting.", protectorName, err)
-		protector.Revert()
+		log.ErrorLog(ctx, "fscrypt: protector name=%s create failed: %v", protectorName, err)
 
 		return err
 	}
@@ -233,24 +247,57 @@ func getInodeEncryptedAttribute(p string) (bool, error) {
 	return false, nil
 }
 
-// IsDirectoryUnlocked checks if a directory is an unlocked fscrypted directory.
-func IsDirectoryUnlocked(directoryPath string) error {
+// IsDirectoryUnlockedFscrypt checks if a directory is an unlocked fscrypted directory.
+func IsDirectoryUnlocked(directoryPath, filesystem string) error {
 	if _, err := fscryptmetadata.GetPolicy(directoryPath); err != nil {
 		return fmt.Errorf("no fscrypt policy set on directory %q: %w", directoryPath, err)
 	}
 
-	_, err := xattr.Get(directoryPath, "ceph.fscrypt.auth")
-	if err != nil {
-		return fmt.Errorf("error reading ceph.fscrypt.auth xattr on %q: %w", directoryPath, err)
+	switch filesystem {
+	case "ceph":
+		_, err := xattr.Get(directoryPath, "ceph.fscrypt.auth")
+		if err != nil {
+			return fmt.Errorf("error reading ceph.fscrypt.auth xattr on %q: %w", directoryPath, err)
+		}
+	case "ext4":
+		encrypted, err := getInodeEncryptedAttribute(directoryPath)
+		if err != nil {
+			return err
+		}
+
+		if !encrypted {
+			return fmt.Errorf("path %s does not have the encrypted inode flag set. Encryption init must have failed",
+				directoryPath)
+		}
 	}
 
 	return nil
 }
 
+func getBestPolicyVersion() (int64, error) {
+	// fetch the current running kernel info
+	release, err := util.GetKernelVersion()
+	if err != nil {
+		return 0, fmt.Errorf("fetching current kernel version failed: %w", err)
+	}
+
+	switch {
+	case util.CheckKernelSupport(release, policyV2Support):
+		return 2, nil
+	default:
+		return 1, nil
+	}
+}
+
 // InitializeNode performs once per nodeserver initialization
 // required by the fscrypt library. Creates /etc/fscrypt.conf.
 func InitializeNode(ctx context.Context) error {
-	err := fscryptactions.CreateConfigFile(FscryptHashingTimeTarget, 2)
+	policyVersion, err := getBestPolicyVersion()
+	if err != nil {
+		return err
+	}
+
+	err = fscryptactions.CreateConfigFile(FscryptHashingTimeTarget, policyVersion)
 	if err != nil {
 		existsError := &fscryptactions.ErrConfigFileExists{}
 		if errors.As(err, &existsError) {
@@ -274,17 +321,9 @@ func Unlock(
 	volEncryption *util.VolumeEncryption,
 	stagingTargetPath string, volID string,
 ) error {
-	// Fetches keys from KMS. Do this first to catch KMS errors before setting up anything.
-	keyFn, err := createKeyFuncFromVolumeEncryption(ctx, *volEncryption, volID)
-	if err != nil {
-		log.ErrorLog(ctx, "fscrypt: could not create key function: %v", err)
-
-		return err
-	}
-
 	fscryptContext, err := fscryptactions.NewContextFromMountpoint(stagingTargetPath, nil)
 	if err != nil {
-		log.ErrorLog(ctx, "fscrypt: failed to create context from mountpoint %v: %w", stagingTargetPath, err)
+		log.ErrorLog(ctx, "fscrypt: failed to create context from mountpoint %v: %w", stagingTargetPath)
 
 		return err
 	}
@@ -304,7 +343,7 @@ func Unlock(
 	if err = fscryptContext.Mount.Setup(0o755); err != nil {
 		alreadySetupErr := &fscryptfilesystem.ErrAlreadySetup{}
 		if errors.As(err, &alreadySetupErr) {
-			log.DebugLog(ctx, "fscrypt: metadata directory in %q already set up", alreadySetupErr.Mount.Path)
+			log.DebugLog(ctx, "fscrypt: metadata directory %q already set up", alreadySetupErr.Mount.Path)
 			metadataDirExists = true
 		} else {
 			log.ErrorLog(ctx, "fscrypt: mount setup failed: %v", err)
@@ -323,6 +362,13 @@ func Unlock(
 	if metadataDirExists != kernelPolicyExists {
 		return fmt.Errorf("fscrypt: unsupported state metadata=%t kernel_policy=%t",
 			metadataDirExists, kernelPolicyExists)
+	}
+
+	keyFn, err := createKeyFuncFromVolumeEncryption(ctx, *volEncryption, volID)
+	if err != nil {
+		log.ErrorLog(ctx, "fscrypt: could not create key function: %v", err)
+
+		return err
 	}
 
 	protectorName := fmt.Sprintf("%s-%s", FscryptProtectorPrefix, volEncryption.GetID())
