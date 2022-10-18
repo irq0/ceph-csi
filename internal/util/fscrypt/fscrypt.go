@@ -358,7 +358,7 @@ func Unlock(
 		return err
 	}
 
-	fscryptContext, err := fscryptactions.NewContextFromPath(stagingTargetPath, nil)
+	fscryptContext, err := fscryptactions.NewContextFromMountpoint(stagingTargetPath, nil)
 	if err != nil {
 		log.ErrorLog(ctx, "fscrypt: failed to create context from mountpoint %v: %w", stagingTargetPath, err)
 
@@ -394,23 +394,8 @@ func Unlock(
 	encryptedPath := path.Join(stagingTargetPath, FscryptSubdir)
 	kernelPolicyExists := false
 	// 2. Ask the kernel if the directory has an fscrypt policy in place.
-	_, err = fscryptmetadata.GetPolicy(encryptedPath)
-
-	var errNotEncrypted *fscryptmetadata.ErrNotEncrypted
-	switch {
-	case errors.Is(err, fscryptmetadata.ErrEncryptionNotSupported):
-		fallthrough
-	case errors.Is(err, fscryptmetadata.ErrEncryptionNotEnabled):
-		return fmt.Errorf("fscrypt: kernel does not support encryption on %s filesystem: %w",
-			fscryptContext.Mount, err)
-	case errors.As(err, &errNotEncrypted):
-		fallthrough
-	case errors.Is(err, os.ErrNotExist):
-		kernelPolicyExists = false // encryption supported, directory not set up
-	case err == nil:
-		kernelPolicyExists = true // encrypted directory already set up
-	default:
-		return fmt.Errorf("fscrypt: error when checking fscrypt policy: %w", err)
+	if _, err = fscryptmetadata.GetPolicy(encryptedPath); err == nil { // encrypted directory already set up
+		kernelPolicyExists = true
 	}
 
 	if metadataDirExists != kernelPolicyExists {
