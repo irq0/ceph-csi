@@ -72,6 +72,7 @@ var _ = Describe("CephFS Upgrade Testing", func() {
 		if err != nil {
 			e2elog.Failf("failed to getwd: %v", err)
 		}
+		deployVault(f.ClientSet, deployTimeout)
 		err = upgradeAndDeployCSI(upgradeVersion, "cephfs")
 		if err != nil {
 			e2elog.Failf("failed to upgrade csi: %v", err)
@@ -148,6 +149,7 @@ var _ = Describe("CephFS Upgrade Testing", func() {
 		if err != nil {
 			e2elog.Failf("failed to delete storageclass: %v", err)
 		}
+		deleteVault()
 		if deployCephFS {
 			deleteCephfsPlugin()
 			if cephCSINamespace != defaultNs {
